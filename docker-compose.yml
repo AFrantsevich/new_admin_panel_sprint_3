@@ -1,0 +1,77 @@
+version: '3'
+
+volumes:
+  postgre_data:
+  esdata1:
+
+networks:
+  simple_project_net:
+    external: False
+
+services:
+  theatre-db:
+    container_name: db
+    image: postgres:15.2-alpine
+    restart: always
+    networks:
+      - simple_project_net
+    volumes:
+      - postgre_data:/var/lib/postgresql/data
+      - ./database_dump.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      - POSTGRES_DB=movies
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  app:
+    build: etl
+    container_name: app 
+    restart: always
+    networks:
+      - simple_project_net
+    env_file:
+      - ./.env
+    volumes:
+      - .:/app/
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      theatre-db:
+        condition: service_healthy
+
+  redis:
+    image: redis:7.0.1-alpine
+    container_name: redis
+    restart: always
+    networks:
+      - simple_project_net
+ 
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms200m -Xmx200m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata1:/var/elc/data
+    ports:
+      - "9200:9200"
+    networks:
+      - simple_project_net
+    healthcheck:
+     test: curl -s http://elasticsearch:9200 >/dev/null || exit 1
+     interval: 5s 
+     timeout: 3s
+     retries: 5
+
