@@ -1,4 +1,5 @@
 from typing import List
+import logging
 
 from elasticsearch import Elasticsearch, NotFoundError
 from elasticsearch.helpers import bulk
@@ -10,7 +11,7 @@ class ELCHandler:
 
     def load(self, bulk_data: List[dict]):
         resp = bulk(self._elc, bulk_data)
-        print(resp)
+        logging.debug(f"Добавлены записи в ELK {resp}")
 
     def create_index_if_not_ex(self, data, index):
         try:

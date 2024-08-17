@@ -7,6 +7,7 @@ from elasticsearch import Elasticsearch
 from redis import Redis
 
 from config import POLLING_TIME, elc_config, postgres_config, redis_config
+from custom_errors import conn_errors, db_errors
 from elc import ELCHandler
 from models import FilmWorkModel, Genre, Person
 from pg_producer import PostgresProducer
@@ -164,14 +165,14 @@ class GenreLoader(Loader):
         self.table_name = "genre"
 
     def select_query(self) -> str:
-        return (  # pyright: ignore[]
+        return (
             "SELECT gfw.film_work_id film_id, "
             "ARRAY_AGG (g.name) genres, "
             "MAX(g.modified) as modified "
             "FROM content.genre_film_work gfw "
             "LEFT JOIN content.genre g ON g.id = gfw.genre_id "
             "GROUP BY film_id "
-            f"HAVING MAX(g.modified) > '{self.get_time(self.table_name)}' "  # pyright: ignore[]
+            f"HAVING MAX(g.modified) > '{self.get_time(self.table_name)}' "
             "ORDER BY modified"
         )
 
@@ -197,8 +198,8 @@ class GenreLoader(Loader):
         return bulk_data
 
 
-@backoff()
-def main():
+@backoff(conn_errors, db_errors)
+def main() -> None:
     """Главная функция загрузки данных из кадой конкретной таблицы
 
     в elastic.

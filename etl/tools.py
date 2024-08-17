@@ -3,25 +3,22 @@ import time
 from contextlib import contextmanager
 from dataclasses import asdict
 from functools import wraps
-from typing import Generator
+from typing import Generator, Tuple
 
 import psycopg
-from elasticsearch.exceptions import ApiError, SerializationError, TransportError
-from psycopg import ClientCursor, OperationalError
-from psycopg import Connection as _pg_connection
-from psycopg.errors import (
-    DataError,
-    IntegrityError,
-    NotSupportedError,
-    ProgrammingError,
-)
+from psycopg import ClientCursor, Connection as _pg_connection
 from psycopg.rows import dict_row
-from redis.exceptions import ConnectionError
 
-from config import PostgreConfig
+from config import PostgreSettings, postgres_config
 
 
-def backoff(start_sleep_time=0.1, factor=2, border_sleep_time=10):
+def backoff(
+    conn_errors: Tuple,
+    db_errors: Tuple,
+    start_sleep_time=0.1,
+    factor=2,
+    border_sleep_time=10,
+):
     """
     Функция для повторного выполнения функции через некоторое время, если возникла ошибка.
     Использует наивный экспоненциальный рост времени повтора (factor)
@@ -44,21 +41,10 @@ def backoff(start_sleep_time=0.1, factor=2, border_sleep_time=10):
             while t < border_sleep_time:
                 try:
                     return func()
-                except (
-                    IntegrityError,
-                    DataError,
-                    ProgrammingError,
-                    NotSupportedError,
-                    SerializationError,
-                    ApiError,
-                ) as database_errors:
+                except db_errors as database_errors:
                     logging.critical(database_errors, exc_info=True)
                     raise database_errors
-                except (
-                    TransportError,
-                    OperationalError,
-                    ConnectionError,
-                ) as connection_errors:
+                except conn_errors as connection_errors:
                     time.sleep(t)
                     t = t * factor**count
                     count += 1
@@ -73,8 +59,8 @@ def backoff(start_sleep_time=0.1, factor=2, border_sleep_time=10):
 
 
 @contextmanager
-def pg_context(config: PostgreConfig) -> Generator[_pg_connection, None, None]:
-    conn = psycopg.connect(**asdict(config))
+def pg_context(config: PostgreSettings) -> Generator[_pg_connection, None, None]:
+    conn = psycopg.connect(**postgres_config.model_dump())  # pyright: ignore[]
     conn.row_factory = dict_row  # pyright: ignore[]
     conn.cursor_factory = ClientCursor
     try:
